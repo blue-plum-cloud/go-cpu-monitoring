@@ -67,38 +67,52 @@ func ConfigPerf(pec *PerfEventConfig, cpu int) int {
 	return int(group_fd)
 }
 
-func SetupPerf() (PerfEventConfig, []string) {
-	strings := []string{"Instructions",
-		"Cycles",
-		"All Retired Memory Instructions",
-		"L1D Misses",
-		"L1D Hits",
-		// "L2 Misses",
-		// "L2 Hits",
-		// "L3 Misses",
-		// "L3 Hits",
-	}
+func SetupPerf(mode bool) (PerfEventConfig, []string) {
+	var strings []string
+	var types []PerfType
+	var configs []PerfType
+	if mode {
+		strings = []string{"Instructions",
+			"Cycles",
+			"All Retired Memory Instructions",
+			"L1D Misses",
+			"L1D Hits",
+		}
 
-	types := []PerfType{PERF_TYPE_HARDWARE,
-		PERF_TYPE_HARDWARE,
-		PERF_TYPE_RAW,
-		PERF_TYPE_RAW,
-		PERF_TYPE_RAW,
-		// PERF_TYPE_RAW,
-		// PERF_TYPE_RAW,
-		// PERF_TYPE_RAW,
-		// PERF_TYPE_RAW,
-	}
+		types = []PerfType{PERF_TYPE_HARDWARE,
+			PERF_TYPE_HARDWARE,
+			PERF_TYPE_RAW,
+			PERF_TYPE_RAW,
+			PERF_TYPE_RAW,
+		}
 
-	configs := []PerfType{PERF_COUNT_HW_INSTRUCTIONS,
-		PERF_COUNT_HW_REF_CPU_CYCLES,
-		0x83D0,
-		0x08D1,
-		0x01D1,
-		// 0x10D1,
-		// 0x02D1,
-		// 0x20D1,
-		// 0x04D1,
+		configs = []PerfType{PERF_COUNT_HW_INSTRUCTIONS,
+			PERF_COUNT_HW_REF_CPU_CYCLES,
+			0x83D0,
+			0x08D1,
+			0x01D1,
+		}
+	} else {
+		strings = []string{"Instructions",
+			"L2 Misses",
+			"L2 Hits",
+			"L3 Misses",
+			"L3 Hits",
+		}
+
+		types = []PerfType{PERF_TYPE_HARDWARE,
+			PERF_TYPE_RAW,
+			PERF_TYPE_RAW,
+			PERF_TYPE_RAW,
+			PERF_TYPE_RAW,
+		}
+
+		configs = []PerfType{PERF_COUNT_HW_INSTRUCTIONS,
+			0x10D1,
+			0x02D1,
+			0x20D1,
+			0x04D1,
+		}
 	}
 
 	hw_cache_op_ids := []PerfType{}
