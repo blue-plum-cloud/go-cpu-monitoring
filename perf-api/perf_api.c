@@ -109,7 +109,7 @@ void something(){
     for (volatile int i = 0; i < 1000000; i++); // Busy-wait loop
 }
 
-void get_perf(struct perf_event_attr *pe, char ** string, uint64_t *ids, int event_count, int group_fd){
+void get_perf(struct perf_event_attr *pe, char ** string, uint64_t *ids, int event_count, int group_fd, int *values){
 
     // parse perf
     size_t buffer_size = sizeof(struct read_format)+sizeof(struct value)*event_count;
@@ -127,8 +127,11 @@ void get_perf(struct perf_event_attr *pe, char ** string, uint64_t *ids, int eve
         for (int j = 0; j < event_count; j++){
             if (rfs->values[i].id==ids[j]){
                 printf("%s: %lu\n", string[i],rfs->values[i].value);
+                values[i] = rfs->values[i].value;
             }
         }
     }
+
+    free(buf);
 }
 

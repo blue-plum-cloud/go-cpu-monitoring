@@ -5,7 +5,7 @@ package perf
 #include <stdio.h>
 #include <stdlib.h>
 #include "perf_api.h"
-#include "perf_api.c"
+// #include "perf_api.c"
 
 */
 import "C"
@@ -20,9 +20,19 @@ func UNUSED(x ...interface{}) {}
 type PerfType C.uint64_t
 
 const (
+	// type
 	PERF_TYPE_HARDWARE PerfType = C.PERF_TYPE_HARDWARE
 	PERF_TYPE_HW_CACHE PerfType = C.PERF_TYPE_HW_CACHE
 	PERF_TYPE_RAW      PerfType = C.PERF_TYPE_RAW
+
+	// config, PERF_TYPE_HARDWARE
+	PERF_COUNT_HW_CPU_CYCLES     PerfType = C.PERF_COUNT_HW_CPU_CYCLES
+	PERF_COUNT_HW_INSTRUCTIONS   PerfType = C.PERF_COUNT_HW_INSTRUCTIONS
+	PERF_COUNT_HW_REF_CPU_CYCLES PerfType = C.PERF_COUNT_HW_REF_CPU_CYCLES
+
+	PERF_COUNT_HW_CACHE_L1D           PerfType = C.PERF_COUNT_HW_CACHE_L1D
+	PERF_COUNT_HW_CACHE_OP_READ       PerfType = C.PERF_COUNT_HW_CACHE_OP_READ
+	PERF_COUNT_HW_CACHE_RESULT_ACCESS PerfType = C.PERF_COUNT_HW_CACHE_RESULT_ACCESS
 )
 
 // PerfEventConfig holds the configuration for performance events
@@ -44,7 +54,7 @@ func NewPerfEventConfig(numEvents int) PerfEventConfig {
 	}
 }
 
-func ConfigPerf(pec *PerfEventConfig, cpu int) C.int {
+func ConfigPerf(pec *PerfEventConfig, cpu int) int {
 	group_fd := C.config_perf_multi(
 		(*C.struct_perf_event_attr)(unsafe.Pointer(&pec.pe)), // Assuming `pe` is correctly initialized
 		&pec.Fds[0],
@@ -54,33 +64,91 @@ func ConfigPerf(pec *PerfEventConfig, cpu int) C.int {
 		(C.int)(len(pec.Fds)),
 		(C.int)(cpu),
 	)
-	return group_fd
+	return int(group_fd)
 }
 
-func StartInstrumentation(group_fd C.int) {
-	C.reset_and_enable_ioctl(group_fd)
+func SetupPerf() (PerfEventConfig, []string) {
+	strings := []string{"Instructions",
+		"Cycles",
+		"All Retired Memory Instructions",
+		"L1D Misses",
+		"L1D Hits",
+		// "L2 Misses",
+		// "L2 Hits",
+		// "L3 Misses",
+		// "L3 Hits",
+	}
+
+	types := []PerfType{PERF_TYPE_HARDWARE,
+		PERF_TYPE_HARDWARE,
+		PERF_TYPE_RAW,
+		PERF_TYPE_RAW,
+		PERF_TYPE_RAW,
+		// PERF_TYPE_RAW,
+		// PERF_TYPE_RAW,
+		// PERF_TYPE_RAW,
+		// PERF_TYPE_RAW,
+	}
+
+	configs := []PerfType{PERF_COUNT_HW_INSTRUCTIONS,
+		PERF_COUNT_HW_REF_CPU_CYCLES,
+		0x83D0,
+		0x08D1,
+		0x01D1,
+		// 0x10D1,
+		// 0x02D1,
+		// 0x20D1,
+		// 0x04D1,
+	}
+
+	hw_cache_op_ids := []PerfType{}
+	hw_cache_op_result_ids := []PerfType{}
+
+	numEvents := len(configs)
+
+	peConfig := NewPerfEventConfig(numEvents)
+
+	SetupPerfEvents(&peConfig, configs, types, hw_cache_op_ids, hw_cache_op_result_ids, numEvents)
+
+	return peConfig, strings
 }
 
-func EndInstrumentation(pe *C.struct_perf_event_attr, group_fd C.int, cStrings []*C.char, peConfig *PerfEventConfig, numEvents int) {
+func StartInstrumentation(group_fd int) {
+	C.reset_and_enable_ioctl((C.int)(group_fd))
+}
+
+func EndInstrumentation(group_fd int, strings []string, peConfig *PerfEventConfig, numEvents int) {
 
 	// Disable and read the event
-	C.disable_ioctl(group_fd)
+	values := make([]C.int, numEvents)
+	C.disable_ioctl((C.int)(group_fd))
+
+	cStrings := make([]*C.char, len(strings))
+
+	for i, s := range strings {
+		cStrings[i] = C.CString(s)                // Convert Go string to C string
+		defer C.free(unsafe.Pointer(cStrings[i])) // Free memory when done
+	}
 
 	C.get_perf(
-		(*C.struct_perf_event_attr)(unsafe.Pointer(&pe)),
+		(*C.struct_perf_event_attr)(unsafe.Pointer(&peConfig.pe)),
 		&cStrings[0],
 		&peConfig.Ids[0],
 		(C.int)(numEvents),
-		group_fd,
+		(C.int)(group_fd),
+		(*C.int)(unsafe.Pointer(&values[0])),
 	)
+
+	for i := 0; i < numEvents; i++ {
+		log.Printf("%s: %d\n", strings[i], values[i])
+	}
 }
 
-// TODO: configure for PERF_TYPE_RAW events
 func SetupPerfEvents(peConfig *PerfEventConfig,
-	configs []C.uint64_t,
-	types []C.uint64_t,
-	hw_cache_op_ids []C.uint64_t,
-	hw_cache_op_result_ids []C.uint64_t,
+	configs []PerfType,
+	types []PerfType,
+	hw_cache_op_ids []PerfType,
+	hw_cache_op_result_ids []PerfType,
 	numEvents int) {
 
 	cache_id_count := 0
@@ -98,18 +166,18 @@ func SetupPerfEvents(peConfig *PerfEventConfig,
 				log.Fatal("not enough hw_cache_op_ids!")
 				return
 			}
-			cache_hw_event = C.config_cache_id(configs[i],
-				hw_cache_op_ids[cache_id_count],
-				hw_cache_op_result_ids[cache_id_count])
+			cache_hw_event = C.config_cache_id((C.uint64_t)(configs[i]),
+				(C.uint64_t)(hw_cache_op_ids[cache_id_count]),
+				(C.uint64_t)(hw_cache_op_result_ids[cache_id_count]))
 
 			cache_id_count++
 
 			peConfig.Configs[i] = cache_hw_event
 		} else {
-			peConfig.Configs[i] = configs[i]
+			peConfig.Configs[i] = (C.uint64_t)(configs[i])
 		}
 		peConfig.Fds[i] = -1
-		peConfig.Types[i] = types[i]
+		peConfig.Types[i] = (C.uint64_t)(types[i])
 		peConfig.Ids[i] = C.uint64_t(i)
 	}
 }
@@ -125,20 +193,20 @@ We are concerned about:
 func main() {
 	// we shall test perf here
 
-	types := []C.uint64_t{C.PERF_TYPE_HARDWARE,
-		C.PERF_TYPE_HARDWARE,
-		C.PERF_TYPE_HW_CACHE,
-		C.PERF_TYPE_RAW,
+	types := []PerfType{PERF_TYPE_HARDWARE,
+		PERF_TYPE_HARDWARE,
+		PERF_TYPE_HW_CACHE,
+		// PERF_TYPE_RAW,
 	}
 
-	configs := []C.uint64_t{C.PERF_COUNT_HW_INSTRUCTIONS,
-		C.PERF_COUNT_HW_CPU_CYCLES,
-		C.PERF_COUNT_HW_CACHE_L1D,
-		0x17,
+	configs := []PerfType{PERF_COUNT_HW_INSTRUCTIONS,
+		PERF_COUNT_HW_CPU_CYCLES,
+		PERF_COUNT_HW_CACHE_L1D,
+		// 0x17,
 	}
 
-	hw_cache_op_ids := []C.uint64_t{C.PERF_COUNT_HW_CACHE_OP_READ}
-	hw_cache_op_result_ids := []C.uint64_t{C.PERF_COUNT_HW_CACHE_RESULT_ACCESS}
+	hw_cache_op_ids := []PerfType{PERF_COUNT_HW_CACHE_OP_READ}
+	hw_cache_op_result_ids := []PerfType{PERF_COUNT_HW_CACHE_RESULT_ACCESS}
 
 	numEvents := len(configs)
 
@@ -147,13 +215,7 @@ func main() {
 	SetupPerfEvents(&peConfig, configs, types, hw_cache_op_ids, hw_cache_op_result_ids, numEvents)
 
 	strings := []string{"Instructions", "Cycles", "L1D Cache Read Accesses", "L2_CACHE_RD"}
-	// Create a slice to hold the C strings
-	cStrings := make([]*C.char, len(strings))
 
-	for i, s := range strings {
-		cStrings[i] = C.CString(s)                // Convert Go string to C string
-		defer C.free(unsafe.Pointer(cStrings[i])) // Free memory when done
-	}
 	group_fd := ConfigPerf(&peConfig, 0)
 
 	if int(group_fd) < 0 {
@@ -165,6 +227,6 @@ func main() {
 
 	C.something()
 
-	EndInstrumentation(&peConfig.pe, group_fd, cStrings, &peConfig, numEvents)
+	EndInstrumentation(group_fd, strings, &peConfig, numEvents)
 
 }

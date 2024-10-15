@@ -40,6 +40,6 @@ void reset_and_enable_ioctl(int fd);
 void disable_ioctl(int fd);
 void config_perf(struct perf_event_attr *pe,int *fd,uint64_t type, uint64_t config);
 int config_perf_multi(struct perf_event_attr *pe, int *fds, uint64_t *ids, uint64_t *types, uint64_t *configs, int event_count, int cpu);
-void get_perf(struct perf_event_attr *pe, char ** string, uint64_t *ids, int event_count, int group_fd);
+void get_perf(struct perf_event_attr *pe, char ** string, uint64_t *ids, int event_count, int group_fd, int *values);
 #endif
 

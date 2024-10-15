@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"syscall"
 	"time"
+	"unsafe"
 
 	log "github.com/sirupsen/logrus" // logrus package
 )
@@ -15,13 +17,32 @@ asynchronous function that makes a HTTP request to the intel PCM
 sensor server to retrieve sensor data.
 */
 func MakePCMRequest(url string, filename string, wg *sync.WaitGroup, readyChan chan struct{}) {
+	defer wg.Done()
+
+	var mask uintptr
+
+	// Get the current CPU affinity of the process
+	if _, _, err := syscall.RawSyscall(syscall.SYS_SCHED_GETAFFINITY, 0, uintptr(unsafe.Sizeof(mask)), uintptr(unsafe.Pointer(&mask))); err != 0 {
+		log.Println("Failed to get CPU affinity:", err)
+		return
+	}
+	log.Println("Current CPU affinity:", mask)
+
+	// Set the new CPU affinity
+	mask = 0
+	if _, _, err := syscall.RawSyscall(syscall.SYS_SCHED_SETAFFINITY, 0, uintptr(unsafe.Sizeof(mask)), uintptr(unsafe.Pointer(&mask))); err != 0 {
+		log.Println("Failed to set CPU affinity:", err)
+		return
+	}
+	log.Println("New CPU affinity:", mask)
+
 	text := ""
 
-	defer wg.Done()
 	// Create a new request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Errorf("Error creating request for %s: %s", url, err)
+		readyChan <- struct{}{}
 		return
 	}
 
