@@ -87,7 +87,7 @@ func SetupPerf(mode bool) (PerfEventConfig, []string) {
 		}
 
 		configs = []PerfType{PERF_COUNT_HW_INSTRUCTIONS,
-			PERF_COUNT_HW_REF_CPU_CYCLES,
+			PERF_COUNT_HW_CPU_CYCLES,
 			0x83D0,
 			0x08D1,
 			0x01D1,
